@@ -1,0 +1,36 @@
+autostop:
+  enabled: true
+  package: yandextank.plugins.Autostop
+autostop:
+  enabled: true
+  package: yandextank.plugins.Autostop
+  autostop:
+    - limit(40s)
+pandora:
+  enabled: true
+  package: yandextank.plugins.Pandora
+  config_content:
+    pools:
+      - id: HTTP
+        discard_overflow: true
+        gun:
+          type: http
+          target: 'yandex.ru:443'
+          ssl: true
+        ammo:
+          type: uri
+          file: requests.uri
+        result:
+          type: phout
+          destination: ./phout.log
+        startup:
+          type: once
+          times: 1000
+        rps:
+          - duration: 30s
+            type: const
+            ops: 15
+    monitoring:
+      expvar:
+        enabled: true
+        port: 1234
