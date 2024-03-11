@@ -32,11 +32,10 @@ class ENV_VARS:
     @staticmethod
     def target_IP():
         return os.environ['TARGET_IP']
-    
 
 
 def generate_create_agent_request(name):
-     return CreateAgentRequest(
+    return CreateAgentRequest(
         folder_id=ENV_VARS.folder_id(),
         name=name,
         compute_instance_params=CreateComputeInstance(
@@ -54,13 +53,17 @@ def generate_create_agent_request(name):
                 {
                     'subnet_id': ENV_VARS.subnet_id(),
                     'primary_v4_address_spec': {},
-                    'security_group_ids': [ENV_VARS.security_group_id()]
+                    'security_group_ids': (
+                        [ENV_VARS.security_group_id()]
+                        if ENV_VARS.security_group_id()
+                        else []
+                    ),
                 },
             ],
-            metadata={"ssh-keys": ENV_VARS.agent_ssh_keys()},
+            metadata={'ssh-keys': ENV_VARS.agent_ssh_keys()},
         ),
     )
-     
+
 def wait_for_agent_to_be_ready(agent_stub, agent_id, timeout=15 * 60):
     request = GetAgentRequest(agent_id=agent_id)
     step = 10
