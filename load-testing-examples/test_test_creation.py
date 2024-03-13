@@ -1,4 +1,3 @@
-import time
 import uuid
 
 import pytest
@@ -8,6 +7,7 @@ from common import (
     ENV_VARS,
     generate_create_agent_request,
     wait_for_agent_to_be_ready,
+    wait_for_condition,
 )
 from grpc import StatusCode
 from grpc._channel import _InactiveRpcError
@@ -132,13 +132,12 @@ def test_test_creation(sdk: yandexcloud.SDK, create_agent_for_test):
     ).response.id
 
     get_test_request = GetTestRequest(test_id=test_id)
-    for seconds in range(3 * 60):
-        test: Test = test_stub.Get(get_test_request)
-        if test.summary.is_finished:
-            break
-        time.sleep(1)
-    else:
-        raise Exception(f'can\'t wait for test finishing anymore. Waited {seconds=}')
+    wait_for_condition(
+        'wait for test is finished',
+        lambda: test_stub.Get(get_test_request).summary.is_finished,
+        timeout=3 * 60,
+        step=1,
+    )
 
     report_stub: ReportServiceStub = sdk.client(ReportServiceStub)
     get_report_request = GetTableReportRequest(test_id=test_id)
@@ -182,30 +181,33 @@ def test_test_interrupt(sdk: yandexcloud.SDK, create_agent_for_test):
         timeout=60,
     ).response.id
 
+    # wait until test is started
     get_test_request = GetTestRequest(test_id=test_id)
-    for seconds in range(3 * 60):
-        test: Test = test_stub.Get(get_test_request)
-        if test.summary.status != Status.CREATED:
-            break
-        time.sleep(1)
-    else:
-        raise Exception(f'can\'t wait for test finishing anymore. Waited {seconds=}')
+    wait_for_condition(
+        'wait for test execution start',
+        lambda: test_stub.Get(get_test_request).summary.status != Status.CREATED,
+        timeout=3 * 60,
+        step=1,
+    )
 
-    test_stub.Stop(StopTestRequest(test_id=test_id))
-    for seconds in range(30):
-        test: Test = test_stub.Get(get_test_request)
-        if test.summary.status == Status.STOPPED:
-            break
-        time.sleep(1)
-    else:
-        raise Exception(f'couldn\'t stop test. Waited {seconds=}')
+    # stop the test
+    stop_test_operation = test_stub.Stop(StopTestRequest(test_id=test_id))
+    test: Test = sdk.wait_operation_and_get_result(
+        stop_test_operation,
+        response_type=Test,
+        timeout=3 * 60,
+    ).response
 
-    test_stub.Delete(DeleteTestRequest(test_id=test_id))
-    with pytest.raises(Exception, match='NOT_FOUND'):
-        for seconds in range(30):
-            _ = test_stub.Get(get_test_request)
-            time.sleep(1)
+    assert test.summary.is_finished
 
+    # delete the test
+    delete_test_operation = test_stub.Delete(DeleteTestRequest(test_id=test_id))
+    sdk.wait_operation_and_get_result(
+        delete_test_operation,
+        timeout=3 * 60,
+    )
+
+    # confirm the test is deleted
     list_tests_res = test_stub.List(
         ListTestsRequest(folder_id=ENV_VARS.folder_id(), filter=f'id = {test_id}')
     )

@@ -1,5 +1,6 @@
 import os
 import time
+import typing
 
 from yandex.cloud.loadtesting.api.v1.agent.agent_pb2 import Agent
 from yandex.cloud.loadtesting.api.v1.agent.create_compute_instance_pb2 import \
@@ -66,11 +67,23 @@ def generate_create_agent_request(name):
 
 def wait_for_agent_to_be_ready(agent_stub, agent_id, timeout=15 * 60):
     request = GetAgentRequest(agent_id=agent_id)
-    step = 10
+    wait_for_condition(
+        'wait for agent to be ready',
+        lambda: agent_stub.Get(request).status == Status.READY_FOR_TEST,
+        timeout=timeout,
+        step=10,
+    )
+
+
+def wait_for_condition(
+    op_name: str,
+    condition: typing.Callable[[], bool],
+    timeout: int,
+    step: int,
+):
     for seconds in range(1, timeout, step):
-        agent: Agent = agent_stub.Get(request)
-        if agent.status == Status.READY_FOR_TEST:
-            break
+        if condition():
+            return
         time.sleep(step)
     else:
-        raise Exception(f'can\'t wait for agent to be ready anymore. Waited {seconds=}')
+        raise Exception(f'[{op_name or "operation"}] timeout: waited {seconds=}')
